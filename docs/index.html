@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Central de Treinamento SpSkills <span id="appVersion" class="ver">v32</span></title>
+  <link rel="stylesheet" href="./styles.v32.css" />
+  <!-- CDNs -->
+  <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-badge">CT</div>
+        <div class="brand-text">
+          <div class="brand-title">Central de Treinamento</div>
+          <div class="brand-subtitle">SpSkills</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-tab="schedule"><span class="nav-ico">📅</span><span>Cronograma</span></button>
+        <button class="nav-item" data-tab="tasks"><span class="nav-ico">📋</span><span>Tarefas</span></button>
+        <button class="nav-item" data-tab="timers"><span class="nav-ico">⏱</span><span>Cronômetros</span></button>
+      </nav>
+
+      <div class="sidebar-footer muted">Dados salvos localmente (neste navegador).</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div id="pageTitle" class="page-title">Cronograma</div>
+          <div id="pageSubtitle" class="page-subtitle muted">Importe PNG/JPG, XLSX/XML ou PDF e use zoom/pan.</div>
+        </div>
+        <div class="topbar-right">
+          <button id="btnExport" class="btn">Exportar dados</button>
+          <label class="btn primary" for="importJson">Importar dados</label>
+          <input id="importJson" type="file" accept="application/json" hidden />
+          <button id="btnReset" class="btn danger">Reset</button>
+        </div>
+      </header>
+
+      <!-- Cronograma -->
+      <section id="tab-schedule" class="tab active">
+        <div class="grid-2">
+          <div class="panel">
+            <div class="panel-title">Visualização</div>
+            <div class="panel-body schedule-view">
+              <div id="scheduleEmpty" class="empty">
+                <div class="empty-title">Nenhum cronograma carregado</div>
+                <div class="empty-subtitle muted">Envie PNG/JPG, XLSX/XML ou PDF no painel da direita.</div>
+              </div>
+
+              <div id="viewer" class="viewer hidden">
+                <div id="scheduleContent" class="schedule-content"></div>
+              </div>
+
+              <div class="viewer-toolbar">
+                <button id="fitBtn" class="btn small">Ajustar</button>
+                <button id="zoomInBtn" class="btn small">+</button>
+                <button id="zoomOutBtn" class="btn small">-</button>
+                <button id="resetViewBtn" class="btn small">Reset view</button>
+
+                <div id="pdfPager" class="pdf-pager hidden">
+                  <button id="pdfPrev" class="btn small">◀</button>
+                  <div class="muted small-text">PDF: <span id="pdfPage">1</span>/<span id="pdfPages">1</span></div>
+                  <button id="pdfNext" class="btn small">▶</button>
+                </div>
+
+                <div class="muted small-text">Mouse wheel: zoom • Arrastar: pan</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">Upload / Substituir</div>
+            <div class="panel-body">
+              <div class="form-row">
+                <label class="label">Enviar cronograma (.png / .jpg / .xlsx / .xml / .pdf)</label>
+                <input id="scheduleFile" class="input" type="file"
+                  accept="image/png,image/jpeg,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,.xml,text/xml,application/xml,.pdf,application/pdf" />
+                <div class="muted small-text">Planilhas renderizam como tabela (texto nítido). PDF renderiza páginas com navegação.</div>
+              </div>
+
+              <div class="form-row">
+                <label class="label">Opções</label>
+                <button id="removeScheduleBtn" class="btn danger">Remover cronograma</button>
+              </div>
+
+              <hr class="sep" />
+
+              <div class="muted">
+                <div class="panel-title" style="margin:0 0 8px 0;">Qualidade do zoom</div>
+                <div>• Imagens: depende da resolução do arquivo.</div>
+                <div>• Planilhas: texto permanece nítido (tabela).</div>
+                <div>• PDF: zoom nítido via re-render (PDF.js).</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tarefas -->
+      <section id="tab-tasks" class="tab">
+        <div class="panel">
+          <div class="panel-title">Quadro de tarefas (estilo Trello)</div>
+          <div class="panel-body">
+            <div class="row" style="justify-content:space-between;align-items:center;">
+              <div class="muted">Crie listas e tarefas. Clique na tarefa para anexos e etiquetas. Arraste tarefas entre listas.</div>
+              <button id="addListBtn" class="btn primary">+ Nova lista</button>
+            </div>
+            <div id="board" class="board"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Cronômetros -->
+      <section id="tab-timers" class="tab">
+        <div class="timers-header">
+          <div>
+            <div class="panel-title" style="margin:0;padding:0;border:none;">Cronômetros</div>
+            <div class="muted small-text">Independentes das tarefas. Cronômetro (crescente) ou Temporizador (decrescente). “Ocultar gráfico” remove a análise.</div>
+          </div>
+          <div class="row">
+            <div class="seg" role="tablist" aria-label="Filtrar">
+              <button id="timerFilterStopwatch" class="seg-btn active" type="button" role="tab" aria-selected="true">Cronômetros</button>
+              <button id="timerFilterCountdown" class="seg-btn" type="button" role="tab" aria-selected="false">Temporizadores</button>
+            </div>
+            <button id="createTimerBtn" class="btn primary">+ Novo</button>
+          </div>
+        </div>
+
+        <div id="timerGrid" class="timer-grid"></div>
+      </section>
+
+      <footer class="footer muted">Central de Treinamento SpSkills <span id="appVersion" class="ver">v32</span> • Versão local (sem login)</footer>
+    </main>
+  </div>
+
+  <!-- Task Modal -->
+  <div id="taskModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Detalhes da tarefa">
+    <div class="modal-backdrop" id="taskModalClose"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Detalhes da tarefa</div>
+        <button class="icon-btn" id="taskModalX" title="Fechar">✖</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-row">
+          <label class="label">Nome da tarefa</label>
+          <input id="taskModalTitle" class="input" type="text" />
+          <div class="row" style="justify-content:flex-end;">
+            <button id="taskModalSaveTitle" class="btn primary small">Salvar nome</button>
+          </div>
+        </div>
+
+        <hr class="sep" />
+
+        <div class="form-row">
+          <div class="row" style="justify-content:space-between;align-items:center;">
+            <div class="label" style="margin:0;">Etiquetas</div>
+          </div>
+
+          <div id="taskModalLabels" class="labels-wrap"></div>
+
+          <div class="labels-panel">
+            <div class="muted small-text">Marque/desmarque para aplicar na tarefa.</div>
+            <div id="labelsChecklist" class="labels-checklist"></div>
+
+            <div class="labels-editor">
+              <div class="label" style="margin:10px 0 6px 2px;">Criar / editar etiqueta</div>
+              <div class="row">
+                <input id="labelName" class="input" placeholder="Nome" style="flex:1;min-width:180px" />
+                <input id="labelColor" class="input" type="color" style="width:64px;padding:6px" />
+                <button id="labelSave" class="btn primary small">Salvar</button>
+                <button id="labelCancelEdit" class="btn small">Cancelar</button>
+              </div>
+              <div id="labelsList" class="labels-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="sep" />
+
+        <div class="form-row">
+          <div class="row" style="justify-content:space-between;align-items:center;">
+            <div class="label" style="margin:0;">Anexos</div>
+            <label class="btn small" for="taskAttachInput">+ Adicionar</label>
+            <input id="taskAttachInput" type="file" hidden />
+          </div>
+          <div id="taskAttachments" class="attachments"></div>
+          <div class="muted small-text">Anexos ficam salvos localmente neste navegador.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timer Create Modal -->
+  <div id="timerCreateModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Novo cronômetro/temporizador">
+    <div class="modal-backdrop" id="timerCreateClose"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Novo cronômetro</div>
+        <button class="icon-btn" id="timerCreateX" title="Fechar">✖</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label class="label">Nome</label>
+          <input id="timerNameInput" class="input" placeholder="Ex.: Modelagem, 10 minutos, Análise..." />
+        </div>
+
+        <div class="form-row">
+          <label class="label">Tipo</label>
+          <div class="row">
+            <label class="btn small"><input type="radio" name="timerKind" value="stopwatch" checked /> Cronômetro</label>
+            <label class="btn small"><input type="radio" name="timerKind" value="countdown" /> Temporizador</label>
+          </div>
+        </div>
+
+        <div class="form-row" id="countdownSettings" style="display:none;">
+          <label class="label">Duração (HH:MM:SS)</label>
+          <div class="row">
+            <input id="cdHours" class="input" type="number" min="0" value="0" style="width:90px" />
+            <input id="cdMinutes" class="input" type="number" min="0" max="59" value="5" style="width:90px" />
+            <input id="cdSeconds" class="input" type="number" min="0" max="59" value="0" style="width:90px" />
+          </div>
+        </div>
+
+        <div class="row" style="justify-content:flex-end;margin-top:10px;">
+          <button id="timerCreateSave" class="btn primary">Criar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./app.v32.js"></script>
+</body>
+</html>
